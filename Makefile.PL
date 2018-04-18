@@ -10,4 +10,5 @@ WriteMakefile(
 	},
 	ABSTRACT_FROM     => 'lib/JIRA/Client/Automated.pm', # retrieve abstract from module
 	LICENSE           => 'perl',
+	EXE_FILES		  => [qw(bin/jira_search  bin/jira_update)],
 );
