@@ -1,16 +1,19 @@
 #!/usr/bin/perl
 use JIRA::Client::Automated;
 use Term::ReadPassword;
+use Encode;
 use strict;
 
 my ($url, $user, $jql) = @ARGV;
 ($jql && $url && $user) || die("Usage: $0 <url> <user> <JQL query> ");
 
+$jql = Encode::decode_utf8($jql);
 my $password = read_password("JIRA password for $user: ");
 my $jira = JIRA::Client::Automated->new($url, $user, $password);
 
 my $start = 0;
 my $max   = 100;
+binmode STDOUT, ':utf8';
 while(1) {
 	my $results = $jira->search_issues($jql, $start, $max);
 	if ($results->{errors}) {
