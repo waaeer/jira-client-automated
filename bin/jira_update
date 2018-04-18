@@ -1,0 +1,55 @@
+#!/usr/bin/perl
+use JIRA::Client::Automated;
+use Term::ReadPassword;
+use strict;
+
+my ($url, $user, $jql, $update) = @ARGV;
+($jql && $update && $url && $user) || die("Usage: $0 <url> <user> <JQL query> <update in JSON format>");
+
+my $password = read_password("JIRA password for $user: ");
+my $jira = JIRA::Client::Automated->new($url, $user, $password);
+
+my $start = 0;
+my $max   = 100;
+while(1) {
+	my $results = $jira->search_issues($jql, $start, $max);
+	if ($results->{errors}) {
+		die join "\n", "JIRA error: ", @{$results->{errors}};
+	}
+	my $issues = $results->{issues};
+	foreach my $issue (@$issues) { 
+		$jira->update_issue($issue->{key}, JSON::XS::decode_json($update))
+	}	
+	last if scalar(@$issues) < $max;
+	$start += $max;
+}
+
+
+=pod
+
+=head1 NAME
+
+jira_update
+
+=head1 USAGE
+
+  jira_update <url> <user> <JQL query> <update in JSON format>
+
+=head1 DESCRIPTION
+
+Performs update on all JIRA issues selected by JQL query.
+Update in JSON format is usually a set of key-value pairs, examples can be found in https://developer.atlassian.com/server/jira/platform/jira-rest-api-examples/
+
+=head1 AUTHOR
+
+Ivan Panchenko <panchenko@cpan.org>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2018 by the author.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
+
