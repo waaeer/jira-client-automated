@@ -1,5 +1,23 @@
 {{$NEXT}}
 
+1.9       2020-01-08 09:37:12-08:00 America/Los_Angeles
+    Changed to higher version because PAUSE doesn't deal with 3-level version numbers.
+
+1.8.1     2020-01-08 09:25:50-08:00 America/Los_Angeles
+    Changed directory case to match package name.
+
+1.8       2020-01-06 08:37:54-08:00 America/Los_Angeles
+    Added custom field support to update_issue().
+    (Patch provided by Mike Svendsen <msven.dev@gmail.com>.)
+
+1.7       2018-04-10 13:54:02-07:00 America/Los_Angeles
+    Fixed custom field conversion for non-hash fields.
+    (Patch provided by Andreas Mager <amager@barracuda.com>.)
+    Fixed output of error messages to handle non-JSON output.
+    (Patch based on code from Ivan E. Panchenko <panchenko@cpan.org>.)
+    Changed copyright holder. Polyvore has gone out of business.
+    Updated links to JIRA documentation.
+
 1.6       2016-08-21 21:44:44+00:00 UTC
     Added translation of customfields to and from their assigned names.
     Added offline mocked tests. (Now requires JSON::XS, Test::MockModule, and Data::Dump.)

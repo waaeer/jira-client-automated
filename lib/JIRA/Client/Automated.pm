@@ -14,7 +14,7 @@ JIRA::Client::Automated - A JIRA REST Client for automated scripts
 
     my $jira = JIRA::Client::Automated->new($url, $user, $password);
 
-    # If your JIRA instance does not use username/password for authorization 
+    # If your JIRA instance does not use username/password for authorization
     my $jira = JIRA::Client::Automated->new($url);
 
     my $jira_ua = $jira->ua(); # to add in a proxy
@@ -80,23 +80,23 @@ for it first, only creating it if it doesn't exist. If it does already exist
 you can add a comment or a new error log to that issue.
 
 =head1 WORKING WITH JIRA
-6
+
 Atlassian has made a very complete REST API for recent (> 5.0) versions of
 JIRA. By virtue of being complete it is also somewhat large and a little
 complex for the beginner. Reading their tutorials is *highly* recommended
 before you start making hashes to update or transition issues.
 
-L<https://developer.atlassian.com/display/JIRADEV/JIRA+REST+APIs>
+L<https://developer.atlassian.com/cloud/jira/platform/rest/#about>
 
 This module was designed for the JIRA 5.2.11 REST API, as of March 2013, but it
-works fine with JIRA 6.0 as well. Your mileage may vary with future versions.
+works fine with JIRA 6 and JIRA Cloud as well. Your mileage may vary with future versions.
 
 =head1 JIRA ISSUE HASH FORMAT
 
 When you work with an issue in JIRA's REST API, it gives you a JSON file that
 follows this spec:
 
-L<https://developer.atlassian.com/display/JIRADEV/The+Shape+of+an+Issue+in+JIRA+REST+APIs>
+L<https://developer.atlassian.com/cloud/jira/platform/rest/#api-api-2-issue-post>
 
 JIRA::Client::Automated tries to be nice to you and not make you deal directly
 with JSON. When you create a new issue, you can pass in just the pieces you
@@ -174,7 +174,7 @@ are the ones you set up at the very beginning of the registration process and
 then never used again because Google logged you in.
 
 If you have other ways of authorization, like GSSAPI based authorization, do
-not provide username or password. 
+not provide username or password.
 
     my $jira = JIRA::Client::Automated->new($url);
 
@@ -266,13 +266,22 @@ sub _handle_error_response {
     my ($self, $response, $request) = @_;
 
     my $msg = $response->status_line;
-
-    $msg .= pp($self->{_json}->decode($response->decoded_content))
-        if $response->decoded_content  && $response->content_type eq 'application/json';
+    if ($response->decoded_content) {
+        if ($response->content_type eq 'application/json') {
+            $msg .= pp($self->{_json}->decode($response->decoded_content));
+        } else {
+            $msg .= $response->decoded_content;
+        }
+    }
 
     $msg .= "\n\nfor request:\n";
-    $msg .= pp($self->{_json}->decode($request->decoded_content))
-        if $request->decoded_content && $request->content_type eq 'application/json';
+    if ($request->decoded_content) {
+        if ($request->content_type eq 'application/json') {
+            $msg .= pp($self->{_json}->decode($request->decoded_content));
+        } else {
+            $msg .= $request->decoded_content;
+        }
+    }
 
     croak sprintf "Unable to %s %s: %s",
         $request->method, $request->uri->path, $msg;
@@ -338,14 +347,40 @@ dies if there is an error. The hash looks like:
         self => "https://example.atlassian.net/rest/api/latest/issue/24066"
     }
 
-See also L<https://developer.atlassian.com/display/JIRADEV/JIRA+REST+API+Example+-+Create+Issue>
+See also L<https://developer.atlassian.com/cloud/jira/platform/rest/#api-api-2-issue-post>
 
 =cut
+
+sub _jira_server_major_version
+{
+    my ($self) = @_;
+
+    my $uri = "$self->{auth_url}serverInfo";
+
+    my $request = GET $uri,
+      Content_Type => 'application/json';
+
+    my $response = $self->_perform_request($request);
+    my $meta = $self->{_json}->decode($response->decoded_content());
+
+    return $meta->{versionNumbers}->[0];
+}
 
 sub _issue_type_meta {
     my ($self, $project, $issuetype) = @_;
 
-    my $uri = "$self->{auth_url}issue/createmeta?projectKeys=${project}&expand=projects.issuetypes.fields";
+    my $major_version = $self->_jira_server_major_version();
+
+    my $uri;
+
+    # Use new REST API call for JIRA >= 9.x
+    #
+    if ($major_version && $major_version >= 9) {
+        $uri = "$self->{auth_url}issue/createmeta/${project}/issuetypes";
+    }
+    else {
+        $uri = "$self->{auth_url}issue/createmeta?projectKeys=${project}&expand=projects.issuetypes.fields";
+    }
 
     my $request = GET $uri,
       Content_Type => 'application/json';
@@ -431,6 +466,20 @@ sub _convert_to_customfields {
     return $converted_fields;
 }
 
+sub _convert_update_to_customfields {
+    my ($self, $project, $issuetype, $update) = @_;
+
+    my $converted_update_verb_hash;
+    if( $update ){
+        foreach my $hkey ( keys %$update ){
+            my $ckey = $self->_convert_to_custom_field_name($project, $issuetype, $hkey);
+            $converted_update_verb_hash->{$ckey} = $update->{$hkey};
+        }
+    }
+
+    return $converted_update_verb_hash;
+}
+
 sub _issuetype_custom_fieldlist {
     my ($self, $project, $issuetype) = @_;
 
@@ -469,8 +518,8 @@ sub _convert_from_customfields {
             my $value = $fields->{$cfname};
             my $converted_value;
             if (ref $value eq 'ARRAY') {
-                $converted_value = [ map { $_->{value} } @$value ];
-            } elsif (ref $value eq 'HASH')  {
+                $converted_value = [ map { ref $_ eq 'HASH' ? $_->{value} : $_ } @$value ];
+            } elsif (ref $value eq 'HASH') {
                 $converted_value = $value->{value};
             } else {
                 $converted_value = $value;
@@ -598,17 +647,20 @@ The two forms of update can be combined in a single call.
 
 For more information see:
 
-    https://developer.atlassian.com/display/JIRADEV/JIRA+REST+API+Example+-+Edit+issues
-    https://developer.atlassian.com/display/JIRADEV/Updating+an+Issue+via+the+JIRA+REST+APIs
+    L<https://developer.atlassian.com/cloud/jira/platform/rest/#api-api-2-issue-issueIdOrKey-put>
 
 =cut
 
 sub update_issue {
     my ($self, $key, $field_update_hash, $update_verb_hash) = @_;
 
+    my $cur_issue = $self->get_issue( $key );
+    my $project   = $cur_issue->{fields}{project}{key};
+    my $issuetype = $cur_issue->{fields}{issuetype}{name};
+
     my $issue = {};
-    $issue->{fields} = $field_update_hash if $field_update_hash;
-    $issue->{update} = $update_verb_hash  if $update_verb_hash;
+    $issue->{fields} = $self->_convert_to_customfields($project, $issuetype, $field_update_hash) if $field_update_hash;
+    $issue->{update} = $self->_convert_update_to_customfields($project, $issuetype, $update_verb_hash)  if $update_verb_hash;
 
     my $issue_json = $self->{_json}->encode($issue);
     my $uri        = "$self->{auth_url}issue/$key";
@@ -1417,10 +1469,21 @@ Thanks very much to:
 
 =back
 
+=over 4
+
+=item Andreas Mager <amager@barracuda.com>
+
+=back
+
+=over 4
+
+=item Mike Svendsen <msven.dev@gmail.com>
+
+=back
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2016 by Polyvore, Inc.
+This software is copyright (c) 2020 by Michael Friedman
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
